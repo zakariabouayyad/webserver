@@ -12,10 +12,13 @@
 class request;
 
 class response{
-	string	res;
 	public:
-		int	set_res(int connection_socket, request&);
-		string	get_res();
+		size_t	filesize;
+		size_t	totalSent;
+		char*	buffer;
+		void	initialize(request& request);
+		void	sendHeader(int connection_socket, request& request);
+		int		sendBody(int connection_socket, request& request);
 };
 
 #endif

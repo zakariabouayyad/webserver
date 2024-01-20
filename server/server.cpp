@@ -109,7 +109,7 @@ void serversInfos::SetListener(){
 			setsockopt(it->get_slistener(), SOL_SOCKET,
 				SO_REUSEPORT, &reusePortOption, sizeof(reusePortOption));
 			allSockets.push_back(it->get_slistener());//pushtoallsifd
-			it->serversockets.push_back(it->get_slistener());
+			it->mysockets.push_back(it->get_slistener());
 			fcntl(it->get_slistener(), F_SETFL, O_NONBLOCK, FD_CLOEXEC);
 			if (bind(it->get_slistener(), cn->ai_addr,cn->ai_addrlen) < 0){
 				cout << RED << "bind() failed" << RESET_TEXT << endl;

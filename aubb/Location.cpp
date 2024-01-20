@@ -236,7 +236,7 @@ void	Location::init(){
 	setLocationName("/");
 	setPath("/public/");
 	setRoot("/public");
-	setIndex("index.html");
+	setIndex("");
 	setAutoindex(0);
 	setAllowMethods("GET");
 	setAllowMethods("POST");

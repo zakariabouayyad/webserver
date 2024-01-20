@@ -1,6 +1,6 @@
 NAME = webserv
 CPP = c++ -g
-FLAGS = -Wall -Wextra -Werror -std=c++98
+FLAGS = -Wall -Wextra -Werror -std=c++98 #-fsanitize=address 
 SRC_FILES = main.cpp server/server.cpp server/main_loop.cpp response/response.cpp \
 			request/request.cpp client/client.cpp \
 			aubb/aubServer.cpp aubb/Location.cpp aubb/Config.cpp

@@ -11,7 +11,7 @@ int main(int ac, char **av){
 		return 0;
 	try{
 		Config	conf(av[1]);
-		signal(SIGPIPE, SIG_IGN);
+		// signal(SIGPIPE, SIG_IGN);
 		main_loop(conf.Servers);
 	}
 	catch(const std::exception& e){

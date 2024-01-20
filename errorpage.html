@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+html, body {font-family: 'Roboto Mono', monospace;font-size: 16px;}
+body {background-color: black;margin: 0;padding: 0;}
+p {color: white;font-size: 25px;letter-spacing: 0.2px;margin: 0;display: inline;}
+.center-xy {text-align: center;top: 50%;left: 50%;transform: translate(-50%, -50%);position: absolute;}
+</style>
+</head>
+<body>
+<div class='center-xy'>
+<p id='myP'>
+405, Method Not Allowed.
+</p>
+</div>
+<script>
+let divElement = document.getElementById("myP");let textContent = divElement.innerText.toString();let i = 1;function typeWriter() {	divElement.innerText = textContent.slice(0, i);	console.log(divElement.innerText);	i++;	if (i <= textContent.length)		setTimeout(typeWriter, 100);}setTimeout(typeWriter, 0);
+</script>
+</body>
+</html>

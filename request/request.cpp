@@ -9,7 +9,8 @@ using std::vector;
 request::request() : requestStatus(true) {
 	this->chunkSize = 0;
 	this->bodyContentLength = 0;
-
+	this->flag = 0;
+	this->gg = 0;
 }
 
 // request::request()
@@ -58,11 +59,106 @@ std::string request::getFilePath() {
 	return this->filePath;
 }
 
+void request::setFilePath(std::string filePath) {
+	this->filePath = filePath;
+}
+
 bool	request::isRequestDone() {
 	return requestStatus;
 }
 
-void request::checkRequestLine(std::string request)
+int request::getStatusCode() {
+    return this->statusCode;
+}
+
+void request::setStatusCode(int statusCode) {
+	this->statusCode = statusCode;
+}
+
+string request::getQueryString() {
+	return this->queryString;
+}
+
+std::string errorPageTamplate(std::string errorMessage)
+{
+    std::string filePath = "errorpage.html";
+    std::ofstream outputFile(filePath, std::ios::trunc);
+
+    if (outputFile.is_open())
+    {
+        outputFile << "<!DOCTYPE html>\n";
+        outputFile << "<html>\n";
+        	outputFile << "<head>\n";
+        		outputFile << "<style>\n";
+					outputFile << "html, body {font-family: 'Roboto Mono', monospace;font-size: 16px;}\n";
+					outputFile << "body {background-color: black;margin: 0;padding: 0;}\n";
+					outputFile << "p {color: white;font-size: 25px;letter-spacing: 0.2px;margin: 0;display: inline;}\n";
+					outputFile << ".center-xy {text-align: center;top: 50%;left: 50%;transform: translate(-50%, -50%);position: absolute;}\n";
+				outputFile << "</style>\n";
+			outputFile << "</head>\n";
+
+			outputFile << "<body>\n";
+				outputFile << "<div class='center-xy'>\n";
+					outputFile << "<p id='myP'>\n";
+						outputFile << errorMessage + "\n";
+					outputFile << "</p>\n";
+				outputFile << "</div>\n";
+				outputFile << "<script>\n";
+
+				outputFile <<
+						"let divElement = document.getElementById(\"myP\");"
+						"let textContent = divElement.innerText.toString();"
+						"let i = 1;"
+						"function typeWriter() {"
+						"	divElement.innerText = textContent.slice(0, i);"
+						"	console.log(divElement.innerText);"
+						"	i++;"
+						"	if (i <= textContent.length)"
+						"		setTimeout(typeWriter, 100);"
+						"}"
+						"setTimeout(typeWriter, 0);\n";
+				outputFile << "</script>\n";
+			outputFile << "</body>\n";
+        outputFile << "</html>\n";
+
+
+
+        // writeToFile(".container { width: 100%;}\n");
+
+
+        
+
+        // outputFile << "<div class='container'>\n";
+        // outputFile << "<div class='copy-container center-xy'>\n";
+        // outputFile << "<p>\n";
+        // outputFile << errorMessage + "\n";
+
+        // outputFile << "</div>\n";
+        // writeToFile("</div>\n");
+
+        outputFile.close();
+        return filePath;
+    }
+    else
+    {
+        std::cout << "error" << std::endl;
+        return "";
+    }
+}
+
+std::string request::removeAndSetQueryString(const std::string& uri) {
+
+	std::string::size_type queryStringPos = uri.find('?');
+
+	if (queryStringPos != std::string::npos) {
+		this->queryString = uri.substr(queryStringPos + 1);
+		return uri.substr(0, queryStringPos);
+	}
+	this->queryString = "";
+	return uri;
+}
+
+int request::checkRequestLine(std::string request)
 {
 	std::istringstream stream(request);
 	std::string line;
@@ -73,14 +169,32 @@ void request::checkRequestLine(std::string request)
 	// std::cout << line << std::endl;
 
 	stream2 >> this->method >> this->requestURI >> this->httpVersion;
-	// if (this->method != "GET" && this->method != "POST" && this->method != "DELETE")
-	//	 printError("Method Not Allowed", 405);
-	// if (this->requestURI.find_first_not_of("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~:/?#[]@!$&'()*+,;=%") != std::string::npos)
-	//	 printError("Bad Request", 400);
-	// if (this->requestURI.size() > 2048)// mazal request body larger than lbody li fl config file !!
-	//	 printError("Request-URI Too Long", 414);
-	// if (this->httpVersion != "HTTP/1.1")
-	//	 printError("HTTP Version Not Supported", 505);
+	this->requestURI = removeAndSetQueryString(this->requestURI);
+	if (this->method != "GET" && this->method != "POST" && this->method != "DELETE") {
+		this->statusCode = 405;
+		this->filePath = errorPageTamplate("405, Method Not Allowed.");
+		return 1;
+		printError("Method Not Allowed", 405);
+	}
+	if (this->requestURI.find_first_not_of("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~:/?#[]@!$&'()*+,;=%") != std::string::npos) {
+		this->statusCode = 400;
+		this->filePath = errorPageTamplate("400, Bad Request");
+		return 1;
+		printError("Bad Request", 400);
+	}
+	if (this->requestURI.size() > 2048)/* mazal request body larger than lbody li fl config file !!*/ {
+		this->statusCode = 414;
+		this->filePath = errorPageTamplate("414, Bad Request");
+		return 1;
+		printError("Bad Request", 414);
+	}
+	if (this->httpVersion != "HTTP/1.1") {
+		this->statusCode = 505;
+		this->filePath = errorPageTamplate("505, HTTP Version Not Supported");
+		return 1;
+		printError("HTTP Version Not Supported", 505);
+	}
+	return 0;
 }
 
 int request::checkHeaderFields(std::string headerFiles)
@@ -98,20 +212,28 @@ int request::checkHeaderFields(std::string headerFiles)
 
 	for (std::vector<std::string>::iterator i = lines.begin(); i != lines.end(); i++) {
 		if (i->find(":") != std::string::npos) {
-			this->headerFields[i->substr(0, i->find(":"))] = i->substr(i->find(":") + 1);
+			this->headerFields[i->substr(0, i->find(":"))] = i->substr(i->find(":") + 2);
 		}
 	}
 	if (headerFields.find("Transfer-Encoding") != headerFields.end()
-		&& headerFields["Transfer-Encoding"].find("chunked") == std::string::npos)
+		&& headerFields["Transfer-Encoding"].find("chunked") == std::string::npos) {
+		this->statusCode = 501;
+		this->filePath = errorPageTamplate("501, Not implemented");
+		return 1;
 		printError("Not implemented", 501);
+	}
 	if (headerFields.find("Transfer-Encoding") == headerFields.end()
 		&& headerFields.find("Content-Length") == headerFields.end()
-		&& this->method == "POST")
-		printError("Bad Request", 400);
-	if (getMethod() == "GET") {
-		cout << "ra dart mn hna" << endl;
+		&& this->method == "POST") {
+		this->statusCode = 400;
+		this->filePath = errorPageTamplate("400, Bad Request");
 		return 1;
+		printError("Bad Request", 400);
 	}
+	// if (getMethod() == "GET") {
+	// 	cout << "ra dart mn hna" << endl;
+	// 	return 1;
+	// }
 	return 0;
 }
 
@@ -221,8 +343,12 @@ return request::ParsingContinue;
 
 request::ParsingStatus request::checkBody(std::string body, server& _server)
 {
-	if ((int)body.size() > _server.getClientBodyLimit())
+	if ((int)body.size() > _server.getClientBodyLimit()) {
+		this->statusCode = 413;
+		this->filePath = errorPageTamplate("413, Request Entity Too Large");
+		return ParsingFailed;
 		printError("Request Entity Too Large", 413);
+	}
 	if (chunkSize == 0)
 		currentChunkedState = Initial;
 	else if (chunkSize > 0)
@@ -235,63 +361,105 @@ request::ParsingStatus request::checkBody(std::string body, server& _server)
 		switch (status)
 		{
 		case ParsingContinue:
-			// cout << RED << "the parsing continue" << RESET_TEXT << endl;
 			break;// Continue parsing
 		case ParsingFailed:
-			// cout << RED << "the parsing failed" << RESET_TEXT << endl;
 			return ParsingFailed;
 		case ParsingDone:
-			cout << RED << "the parsing is done 1" << RESET_TEXT << endl;
 			currentChunkedState = Initial;// Reset state to Initial for the next chunk
 			break;
 		}
 	}
-	cout << RED << "the parsing is done 2" << RESET_TEXT << endl;
+	// cout << RED << "the parsing is done 2" << RESET_TEXT << endl;
 	return ParsingDone;
 }
 
 request::ParsingStatus request::checkBody2(std::string body, server& _server)
 {
-	cout << RED << "ENTRED check body 2" << RESET_TEXT << endl;
-	if ((int)body.size() > _server.getClientBodyLimit())
+	if ((int)body.size() > _server.getClientBodyLimit()) {
+		this->statusCode = 413;
+		this->filePath = errorPageTamplate("413, Request Entity Too Large");
+		return ParsingFailed;
 		printError("Request Entity Too Large", 413);
-	// if (chunkSize == 0)
-	// 	currentChunkedState = Initial;
-	// else if (chunkSize > 0)
-	// 	currentChunkedState = ParsingChunkData;
-	// cout << BLUE << "currentChunkedState is: " << currentChunkedState << " and chunk size is: "<< chunkSize <<"and c= "<< body[10] << RESET_TEXT << endl;
-	size_t i;
-	
-	cout << BLUE << "size = " << body.size() << RESET_TEXT << endl;
-	cout << WHITE << "body = " << body << RESET_TEXT << endl;
-	for (i = 0; i < body.size(); ++i)
-	{
-		char currentChar = body[i];
-		std::ofstream outputFile("theBodyContentIsHere", std::ios::app);
-		if (outputFile.is_open() && this->method != "GET")
-		{
-			// cout << "dsjfhh" << endl;
-			outputFile << currentChar;
-			outputFile.close();
-		}
-		// ParsingStatus status = parsChunked(currentChar);
-		// switch (status)
-		// {
-		// case ParsingContinue:
-		// 	// cout << RED << "the parsing continue" << RESET_TEXT << endl;
-		// 	break;// Continue parsing
-		// case ParsingFailed:
-		// 	// cout << RED << "the parsing failed" << RESET_TEXT << endl;
-		// 	return ParsingFailed;
-		// case ParsingDone:
-		// 	cout << RED << "the parsing is done 1" << RESET_TEXT << endl;
-		// 	currentChunkedState = Initial;// Reset state to Initial for the next chunk
-		// 	break;
-		// }
 	}
-	cout << BLUE << "i = " << i << RESET_TEXT << endl;
-	bodyContentLength += i;
-	cout << RED << "the parsing is done 3   " << "bodyContentLength is: " << bodyContentLength << RESET_TEXT << endl;
+	std::ofstream outputFile("theBodyContentIsHere", std::ios::app);
+	if (outputFile.is_open() && this->method != "GET") {
+		outputFile << body;
+		outputFile.close();
+	}
+	bodyContentLength += body.size();
+	return ParsingDone;
+}
+
+request::ParsingStatus request::checkBody3(std::string body, server& _server)
+{
+	if ((int)body.size() > _server.getClientBodyLimit()) {
+		this->statusCode = 413;
+		this->filePath = errorPageTamplate("413, Request Entity Too Large");
+		return ParsingFailed;
+		printError("Request Entity Too Large", 413);
+	}
+	// std::istringstream iss(string(&body[0], &body[0] + body.size()));
+	std::istringstream iss(body);
+
+	std::string line;
+	std::string filename;
+
+    while (getline(iss, line)) {
+		if (line.find(boundary) != std::string::npos && flag == 0) {
+			getline(iss, line);// skip boundary
+			flag = 1;
+		}
+		// if (line.compare(boundary + "--") == 0) {
+		// 		// end of file upload
+		// 		break;
+		// }
+		if (line.find("Content-Disposition:") != std::string::npos)
+		{
+			bodyContentLength++;//? added to handel when there is no body
+			gg = 1;
+			if (line.find("filename=\"") != std::string::npos) {
+				size_t filename_start = line.find("filename=\"") + 10;
+				size_t filename_end = line.find('\"', filename_start);
+				if (filename_start != std::string::npos && filename_end != std::string::npos) {
+					filename = line.substr(filename_start, filename_end - filename_start);
+				}
+				getline(iss, line); // skip Content-Type line
+				getline(iss, line); // skip empty line
+			}
+			else {
+				filename = "form_field.txt";
+				getline(iss, line); // skip empty line
+			}
+		}
+		std::ofstream outputFile("filename", std::ios::app); //std::ios::binary);
+		if (outputFile.is_open()) {
+			cout << BLACK << line << RESET_TEXT << endl;
+			if (gg == 0 || bodyContentLength == 1) {
+				outputFile << line + '\n' ;//<< std::endl;
+				// outputFile << std::endl;
+				bodyContentLength += line.size() + 1;
+			}
+			while (getline(iss, line)) {
+				gg = 0;
+				if (line.find(boundary) != std::string::npos || line.find(boundary + "--") != std::string::npos) {
+					flag = 0;
+					break;
+				}
+				// if (line == "\r")
+				// 	continue;
+				cout << BLACK << line << RESET_TEXT << endl;
+				if (iss.tellg() != -1)
+					outputFile << line + '\n' ;//<< std::endl;
+				else
+					outputFile << line;
+				bodyContentLength += line.size() + 1;
+			}
+			outputFile.close();
+			if (line.find(boundary + "--") != std::string::npos) {
+				bodyContentLength = this->actualContentLength;
+			}
+		}
+	}
 	return ParsingDone;
 }
 
@@ -311,7 +479,6 @@ void request::setBytesRange()
 		}
 	}
 	std::istringstream(result) >> this->bytesRange;
-	// std::cout << "bytes tedtts  ; " << this->headerFields["Range"] << std::endl;
 }
 
 void request::setContentLength()
@@ -325,7 +492,6 @@ void request::setContentLength()
 		}
 	}
 	std::istringstream(result) >> this->actualContentLength;
-	// std::cout << "bytes tedtts  ; " << this->headerFields["Range"] << std::endl;
 }
 
 void generatePrefixes(const std::string& path, std::vector<std::string>& prefixes) {
@@ -372,8 +538,10 @@ int request::matchLocation(server& _server)
 
 	if (fileExists(paths.c_str()))
 	{
-		// std::cout << GREEN << "***** flbla *****" << RESET_TEXT << std::endl;
+		std::cout << GREEN << "***** flbla *****" << RESET_TEXT << std::endl;
 		filePath = this->requestURI;
+		if (filePath[0] == '/')
+			filePath = filePath.substr(1);
 		return 0;
 	}
 
@@ -382,15 +550,18 @@ int request::matchLocation(server& _server)
 		// std::cout << GREEN << "***** looping *****" << RESET_TEXT << std::endl;
 		for (std::vector<Location>::iterator it = vec.begin(); it != vec.end(); it++) {
 			// std::cout << RED << "is LOCATION: " << it->getLocationName() << "\t\tequal to URI: " << paths << RESET_TEXT << std::endl;
+
 			if (it->getLocationName() == paths) {
-				// std::cout << GREEN << "*****FOUND A MATCH*****" << RESET_TEXT << std::endl;
+				std::cout << GREEN << "*****FOUND A MATCH*****" << RESET_TEXT << std::endl;
 				filePath = it->getRoot() + this->requestURI;
-				if (isDirectory(filePath.c_str()))
-				{
-					// cout << RED << "___ it's a directory ___" << RESET_TEXT << endl;
+				if (isDirectory(filePath.c_str())) {
+				std::cout << GREEN << "*****FOUND A MATCH 22 *****" << RESET_TEXT << std::endl;
 					filePath = filePath + it->getIndex();
 				}
-				// std::cout << BLUE << filePath << RESET_TEXT << std::endl;
+				loc = *it;
+				// cout << BLUE <<loc.getCgiPath()<< RESET_TEXT << endl;
+				if (filePath[0] == '/')
+					filePath = filePath.substr(1);
 				return 0;
 			}
 		}
@@ -408,128 +579,146 @@ int request::matchLocation(server& _server)
 
 int request::parseRequest(std::string request, server& _server)
 {
-	// std::cout << WHITE << request << RESET_TEXT << std::endl;
-	std::ofstream output("theultimattest", std::ios::app);
-	output << request;
-	output << "\n++++++++++++++++++++++++++++++++++++++++++\n";
-		// cout << RED << "||||||||||||||||||||" << bodyContentLength << RESET_TEXT << endl;
+	cout << BLUE << "KIDOZ MN HNA _++++++++++++++++++++++++++99"<< RESET_TEXT << endl;
+		// cout << BLUE << "wajadnah ..............................." << RESET_TEXT << endl;
+	std::cout << WHITE << request << RESET_TEXT << std::endl;
+	std::cout << MAGENTA << currentChunkedState << " &&& "<< bodyContentLength << RESET_TEXT << std::endl;
 	if (currentChunkedState != ParsingChunkData && bodyContentLength == 0) {
-		// cout << RED << "||||||||||||||||||||" << bodyContentLength << RESET_TEXT << endl;
-		checkRequestLine(request);
+	cout << BLUE << "KIDOZ MN HNA _++++++++++++++++++++++++++ taking request line 990001"<< RESET_TEXT << endl;
+		if (checkRequestLine(request))
+			return 1;
 	}
-		
-	if (currentChunkedState != ParsingChunkData && bodyContentLength == 0)
-		checkHeaderFields(request.substr(0, request.find("\r\n\r\n")));
-	// if (checkHeaderFields(request.substr(0, request.find("\r\n\r\n"))))
-	// {
+
+	if (currentChunkedState != ParsingChunkData && bodyContentLength == 0) {
+	cout << BLUE << "KIDOZ MN HNA _++++++++++++++++++++++++++ taking header fields 990002"<< RESET_TEXT << endl;
+		if (checkHeaderFields(request.substr(0, request.find("\r\n\r\n")))){
+			return 1;
+		}
+	}
+	// cout << BLUE << "KIDOZ MN HNA _++++++++++++++++++++++++++ ou 99000"<< RESET_TEXT << endl;
 	setContentLength();//!
 	setContentType();
-	if (matchLocation(_server)) {
-	std::cout << MAGENTA << "NO location matched" << RESET_TEXT << std::endl;
-	}
-	/*remove the / from the begining of the path*/
-	if (filePath[0] == '/')
-	filePath = filePath.substr(1);
-	if (getMethod() == "GET")
-		return 1;
-
-	// setContentLength();//!
-	// cout << bodyContentLength<< "&& "<< this->actualContentLength << endl;
-	if (bodyContentLength > 0 && bodyContentLength < this->actualContentLength)
-	{
-		// cout << "DEEEZ NTS ________________" << endl;
-		checkBody2(request, _server);
-	}
-	else if (currentChunkedState == 4)
-		checkBody(request, _server);
-	else {
-		if (headerFields.find("Transfer-Encoding") != headerFields.end()) {
-			// cout << "first body" << endl;
-			checkBody(request.substr(request.find("\r\n\r\n") + 4), _server);
-		}
-		else {
-			// cout << "seconde body" << endl;
-			checkBody2(request.substr(request.find("\r\n\r\n") + 4), _server);
-		}
-	}
-
-	cout << MAGENTA << chunkSize << RESET_TEXT << endl;
-
-	// if (bodyContentLength >= this->actualContentLength)
-	// {
-	// 	cout << chunkSize << endl;
-	// 	cout << bodyContentLength << endl;
-	// 	cout << this->actualContentLength << endl;
-	// 	setContentType();//! need to remove comment after chuncked body done
-	// }
-
 	// if (matchLocation(_server)) {
-	// 	std::cout << MAGENTA << "NO location matched" << RESET_TEXT << std::endl;
+	// std::cout << MAGENTA << "NO location matched" << RESET_TEXT << std::endl;
 	// }
-
-	// std::cout << BLUE << "---> " << this->filePath << RESET_TEXT << std::endl;
 	/*remove the / from the begining of the path*/
 	// if (filePath[0] == '/')
 	// 	filePath = filePath.substr(1);
-	// cout << BLUE << " and chunk size is: ============================================================ "<< chunkSize << RESET_TEXT << endl;
-	// if (headerFields["Transfer-Encoding"].find("chunked") != std::string::npos && chunkSize != 0 || bodyContentLength < this->actualContentLength) {
-	// if (chunkSize != 0 || (bodyContentLength < this->actualContentLength && headerFields["Transfer-Encoding"].find("chunked") == std::string::npos)) {
-	// 	cout << "D5l hna ++++++++++++++++++++++" << endl;
-	// 	requestStatus = false;
-	// 	return 0;
+	// if (!fileExists(filePath.c_str()))
+	// {
+	// 	this->statusCode = 404;
+	// 	this->filePath = errorPageTamplate("404, Not Found.");
+	// 	return 1;
+	// 	printError("Not Found.", 404);
 	// }
+	if (getMethod() == "GET")
+		return 1;
+	std::ofstream outputFile("sheeeeeeeeeee", std::ios::app); //std::ios::binary);
+		if (outputFile.is_open()) {
+			outputFile << request;
+		}
+		// cout << BLUE << "wajadnah ..............................."<< bodyContentLength << RESET_TEXT << endl;
+	if (bodyContentLength > 0 && bodyContentLength < this->actualContentLength)
+	{
+		cout << BLUE << "wajadnah ............................... in content length body condition _ _________________"<< RESET_TEXT << endl;
+		if (headerFields.find("Content-Type") != headerFields.end()
+			&& headerFields["Content-Type"].find("multipart/form-data") != std::string::npos) {
+			checkBody3(request, _server);
+			cout << BLUE << "wajadnah ............................... in content length body |boundary after it get headers| condition _ _________________"<< RESET_TEXT << endl;
 
+		}
+		else {
+
+			cout << BLUE << "wajadnah ............................... in content length body |No boundary after getting headers| condition _ _________________"<< RESET_TEXT << endl;
+			checkBody2(request, _server);
+		}
+	}
+	else if (currentChunkedState == 4) {
+
+		cout << BLUE << "wajadnah ..............................   in chunked body after getting headers   .0"<< RESET_TEXT << endl;
+		checkBody(request, _server);
+	}
+	else {
+		
+		if (headerFields.find("Transfer-Encoding") != headerFields.end()) {//!add chunked to this condition
+			cout << BLUE << "wajadnah ..........................    chunked with headers  ....1"<< RESET_TEXT << endl;
+			checkBody(request.substr(request.find("\r\n\r\n") + 4), _server);
+		}
+		else {
+			if (headerFields.find("Content-Type") != headerFields.end()
+			&& headerFields["Content-Type"].find("multipart/form-data") != std::string::npos) {
+				cout << BLUE << "wajadnah ..........................     boundary with headers    .....2"<< RESET_TEXT << endl;
+				checkBody3(request.substr(request.find("\r\n\r\n") + 4), _server);
+			}
+			else {
+				checkBody2(request.substr(request.find("\r\n\r\n") + 4), _server);
+				cout << BLUE << "wajadnah ........................   content length with headers   .......3"<< RESET_TEXT << endl;
+			}
+		}
+	}
+
+	// cout << BLUE << "KIDOZ MN HNA _++++++++++++++++++++++++++"<< RESET_TEXT << endl;
 	if (headerFields["Transfer-Encoding"].find("chunked") != std::string::npos
 		&& headerFields.find("Content-Length") == headerFields.end()
 		&& chunkSize != 0) {
-			cout << RED << "===============1" << RESET_TEXT << endl;
 			requestStatus = false;
+	cout << BLUE << "KIDOZ MN HNA _++++++++++++++++++++++++++ 1"<< RESET_TEXT << endl;
 			return 0;
 		}
 	else if (headerFields["Transfer-Encoding"].find("chunked") == std::string::npos
 		&& headerFields.find("Content-Length") != headerFields.end()
 		&& bodyContentLength < this->actualContentLength) {
 			if (bodyContentLength < this->actualContentLength)
-				cout << RED << "AAHHHH" << RESET_TEXT << endl;
-			cout << RED << "===============2" << RESET_TEXT << endl;
 			requestStatus = false;
+	cout << BLUE << "KIDOZ MN HNA _++++++++++++++++++++++++++2"<< RESET_TEXT << endl;
 			return 0;
 		}
 	else if (headerFields["Transfer-Encoding"].find("chunked") != std::string::npos
 		&& headerFields.find("Content-Length") != headerFields.end()
 		&& chunkSize != 0) {
-			cout << RED << "===============3" << RESET_TEXT << endl;
 			requestStatus = false;
+	cout << BLUE << "KIDOZ MN HNA _++++++++++++++++++++++++++3"<< RESET_TEXT << endl;
 			return 0;
 		}
-	else{
-		cout << RED << "===============4" << RESET_TEXT << endl;
+	else {
+	cout << BLUE << "KIDOZ MN HNA _++++++++++++++++++++++++++4"<< RESET_TEXT << endl;
+		cout <<MAGENTA << "HNA AAAAAAA@#$%^&" << RESET_TEXT <<endl;
 		return 1;
 	}
-	// if (headerFields.find("Content-Length") != headerFields.end() && bodyContentLength < this->actualContentLength) {
-	// 	cout << "D5l hna =======================" << bodyContentLength << ">>>> " << this->actualContentLength << endl;
-	// 	requestStatus = false;
-	// 	return 0;
-	// }
 }
 
 void request::setContentType()
 {
 	addAllContentTypes();
-	if (isDirectory(requestURI.c_str())) {
-		this->ContentType = "text/html";
-	}
-	else {
-		std::string fileExtension;
-		size_t dotPosition = requestURI.rfind(".");
-
-		if (dotPosition != std::string::npos) {
-			fileExtension = requestURI.substr(dotPosition);
+	if (this->method == "GET") {
+		if (isDirectory(requestURI.c_str())) {
+			this->ContentType = "text/html";
 		}
 		else {
-			std::cerr << "Error: No dot found in requestURI\n";
+			std::string fileExtension;
+			size_t dotPosition = requestURI.rfind(".");
+
+			if (dotPosition != std::string::npos) {
+				fileExtension = requestURI.substr(dotPosition);
+			}
+			else {
+				std::cerr << "Error: No dot found in requestURI\n";
+			}
+			this->ContentType = allContTypes[fileExtension];
 		}
-		this->ContentType = allContTypes[fileExtension];
+	}
+	if (this->method == "POST") {
+		this->ContentType = this->headerFields["Content-Type"];
+		this->boundary = "--" + this->ContentType.substr(this->ContentType.find("boundary=") + 9);
+		size_t lastNonSpace = this->boundary.find_last_not_of(" \t\r\n");
+
+		if (lastNonSpace != std::string::npos) {
+			this->boundary.erase(lastNonSpace + 1);
+		}
+		// cout << BLUE<< ">>>>>" <<this->boundary.size() << "|" << this->boundary << "|" << RESET_TEXT << endl;
+		// if (this->boundary[this->boundary.size() - 1] == '\r')
+		// 	this->boundary = this->boundary.substr(0, this->boundary.size() - 1);
+		// cout << BLUE<< ">>>>>" <<this->boundary.size() << "|" << this->boundary << "|" << RESET_TEXT << endl;
 	}
 }
 
