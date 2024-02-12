@@ -93,40 +93,45 @@ void serversInfos::SetListener(){
 		bzero(&server_addr, sizeof(server_addr));
 		server_addr.ai_family = AF_UNSPEC;
 		server_addr.ai_socktype = SOCK_STREAM;
-		server_addr.ai_flags = AI_PASSIVE;
 
-		if (getaddrinfo(0, (it->portGetter()).c_str(),
+		if (getaddrinfo(it->getIp().c_str(), (it->portGetter()).c_str(),
 			&server_addr, &cn) != 0){
-			cout << RED << "getaddrinfo() failed" << RESET_TEXT << endl;
+			perror("getaddrinfo");
 			exit(EXIT_FAILURE);
 		}
-		//mainpart
-		if (!it->get_isdefault())
+		
+		if (!it->get_isdefault()){
 			it->set_slistener(servers[it->get_my_default()].get_slistener());
+			freeaddrinfo(cn);
+		}
 		else {
 			it->set_slistener(socket(cn->ai_family,
 				cn->ai_socktype, cn->ai_protocol));
+			
 			setsockopt(it->get_slistener(), SOL_SOCKET,
 				SO_REUSEPORT, &reusePortOption, sizeof(reusePortOption));
+			
 			allSockets.push_back(it->get_slistener());//pushtoallsifd
 			it->mysockets.push_back(it->get_slistener());
+
 			fcntl(it->get_slistener(), F_SETFL, O_NONBLOCK, FD_CLOEXEC);
 			if (bind(it->get_slistener(), cn->ai_addr,cn->ai_addrlen) < 0){
-				cout << RED << "bind() failed" << RESET_TEXT << endl;
+				perror("bind");
 				freeaddrinfo(cn);
 				closeListeners();
 				exit(EXIT_FAILURE);
 			}
 			freeaddrinfo(cn);
-			if (listen(it->get_slistener(), 20) < 0)
+			if (listen(it->get_slistener(), SOMAXCONN) < 0)
 			{
 				cout << RED << "listen() failed" << RESET_TEXT << endl;
 				closeListeners();
 				exit(EXIT_FAILURE);
 			}
 		}
-		cout << "port: " << it->portGetter();
-		cout << " listening on socket "
+		cout << "host: " << it->getIp();
+		cout << " ,port: " << it->portGetter();
+		cout << " ,listening on socket: "
 			<< it->get_slistener() << endl;
 	}
 }

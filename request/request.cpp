@@ -6,20 +6,56 @@ using std::endl;
 using std::string;
 using std::vector;
 
-request::request() : requestStatus(true) {
+request::request() {
 	this->chunkSize = 0;
 	this->bodyContentLength = 0;
+	this->bodyDone = 0;
+	this->headersDone = starting;
 	this->flag = 0;
 	this->gg = 0;
+	this->is_CGI = 0;
+	this->redirectURL = "";
+	this->statusCode = "200 OK";
+	this->failHeader = false;
+	this->keepAlive = false;
+	this->Cgisdone = 0;
+	this->gotRequestLine = false;
 }
 
-// request::request()
-// {
-//	 this->chunkSize = 0;
-//	 // this->_request = _request;
-//	 // this->_server = _server;
-//	 // parseRequest(request, _server);
-// }
+void	request::reset() {
+	// this->requestStatus = true;
+	this->chunkSize = 0;
+	this->bodyContentLength = 0;
+	this->bodyDone = 0;
+	this->headersDone = starting;
+	this->flag = 0;
+	this->gg = 0;
+	this->is_CGI = 0;
+	this->redirectURL = "";
+	this->statusCode = "200 OK";
+	this->failHeader = false;
+	this->keepAlive = false;
+
+	this->method = "";
+	this->requestURI = "";
+	this->httpVersion = "";
+	this->body = "";
+	this->ContentType = "";
+	this->uploadContentType = "";
+	this->filePath = "";
+	this->redirectURL = "";
+	this->queryString = "";
+	this->boundary = "";
+	this->filename = "";
+	this->cgi_header = "";
+	this->cgi_body = "";
+	this->headers = "";
+	this->theBody = "";
+	this->gotRequestLine = false;
+
+	allContTypes.clear();
+	headerFields.clear();
+}
 
 request::request(const request &other)
 {
@@ -33,21 +69,19 @@ request& request::operator=(const request& other)
 	return *this;
 }
 
-void printError(std::string errorMsg, int status)
-{
-	std::cerr << RED << errorMsg << RESET_TEXT << std::endl;
-	exit(status);
-}
-
 std::string request::getMethod() {
 	return this->method;
 }
 
-string request::getrequestURI(){
-	return requestURI;
+string request::getrequestURI() {
+	return this->requestURI;
 }
 
-string request::getContentType(){
+string request::getredirectURL() {
+	return this->redirectURL;
+}
+
+string request::getContentType() {
 	return this->ContentType;
 }
 
@@ -63,15 +97,15 @@ void request::setFilePath(std::string filePath) {
 	this->filePath = filePath;
 }
 
-bool	request::isRequestDone() {
-	return requestStatus;
-}
+// bool	request::isRequestDone() {
+// 	return requestStatus;
+// }
 
-int request::getStatusCode() {
+std::string request::getStatusCode() {
     return this->statusCode;
 }
 
-void request::setStatusCode(int statusCode) {
+void request::setStatusCode(std::string statusCode) {
 	this->statusCode = statusCode;
 }
 
@@ -79,17 +113,34 @@ string request::getQueryString() {
 	return this->queryString;
 }
 
+void request::setredirectURL(string redir)
+{
+	this->redirectURL = redir;
+}
+
+std::string	request::getUploadPath()
+{
+	return this->uploadPath;
+}
+
+void	request::setUploadPath(std::string path)
+{
+	this->uploadPath = path;
+}
+
 std::string errorPageTamplate(std::string errorMessage)
 {
-    std::string filePath = "errorpage.html";
-    std::ofstream outputFile(filePath, std::ios::trunc);
+	std::string filePath = "errorpage.html";
+	if (fileExists(filePath.c_str()))
+		unlink(filePath.c_str());
+	std::ofstream outputFile(filePath, std::ios::trunc);
 
-    if (outputFile.is_open())
-    {
-        outputFile << "<!DOCTYPE html>\n";
-        outputFile << "<html>\n";
-        	outputFile << "<head>\n";
-        		outputFile << "<style>\n";
+	if (outputFile.is_open())
+	{
+		outputFile << "<!DOCTYPE html>\n";
+		outputFile << "<html>\n";
+			outputFile << "<head>\n";
+				outputFile << "<style>\n";
 					outputFile << "html, body {font-family: 'Roboto Mono', monospace;font-size: 16px;}\n";
 					outputFile << "body {background-color: black;margin: 0;padding: 0;}\n";
 					outputFile << "p {color: white;font-size: 25px;letter-spacing: 0.2px;margin: 0;display: inline;}\n";
@@ -119,31 +170,68 @@ std::string errorPageTamplate(std::string errorMessage)
 						"setTimeout(typeWriter, 0);\n";
 				outputFile << "</script>\n";
 			outputFile << "</body>\n";
-        outputFile << "</html>\n";
+		outputFile << "</html>\n";
+	
+		outputFile.close();
+	}
+	if (outputFile.fail())
+	{
+		std::cout << "error" << std::endl;
+		std::string filePath = "/Users/zbouayya/goinfre/errorpage.html";
+		if (fileExists(filePath.c_str()))
+			unlink(filePath.c_str());
+		std::ofstream outputFile(filePath, std::ios::trunc);
+		if (outputFile.is_open())
+		{
+			outputFile << "<!DOCTYPE html>\n";
+			outputFile << "<html>\n";
+				outputFile << "<head>\n";
+					outputFile << "<style>\n";
+						outputFile << "html, body {font-family: 'Roboto Mono', monospace;font-size: 16px;}\n";
+						outputFile << "body {background-color: black;margin: 0;padding: 0;}\n";
+						outputFile << "p {color: white;font-size: 25px;letter-spacing: 0.2px;margin: 0;display: inline;}\n";
+						outputFile << ".center-xy {text-align: center;top: 50%;left: 50%;transform: translate(-50%, -50%);position: absolute;}\n";
+					outputFile << "</style>\n";
+				outputFile << "</head>\n";
 
+				outputFile << "<body>\n";
+					outputFile << "<div class='center-xy'>\n";
+						outputFile << "<p id='myP'>\n";
+							outputFile << errorMessage + "\n";
+						outputFile << "</p>\n";
+					outputFile << "</div>\n";
+					outputFile << "<script>\n";
 
+					outputFile <<
+							"let divElement = document.getElementById(\"myP\");"
+							"let textContent = divElement.innerText.toString();"
+							"let i = 1;"
+							"function typeWriter() {"
+							"	divElement.innerText = textContent.slice(0, i);"
+							"	console.log(divElement.innerText);"
+							"	i++;"
+							"	if (i <= textContent.length)"
+							"		setTimeout(typeWriter, 100);"
+							"}"
+							"setTimeout(typeWriter, 0);\n";
+					outputFile << "</script>\n";
+				outputFile << "</body>\n";
+			outputFile << "</html>\n";
 
-        // writeToFile(".container { width: 100%;}\n");
+			outputFile.close();
+		}
+	}
+	return filePath;
+}
 
+std::string removewhites(const std::string& str) {
+	size_t start = str.find_first_not_of(" \t\r\n");
+	size_t end = str.find_last_not_of(" \t\r\n");
 
-        
-
-        // outputFile << "<div class='container'>\n";
-        // outputFile << "<div class='copy-container center-xy'>\n";
-        // outputFile << "<p>\n";
-        // outputFile << errorMessage + "\n";
-
-        // outputFile << "</div>\n";
-        // writeToFile("</div>\n");
-
-        outputFile.close();
-        return filePath;
-    }
-    else
-    {
-        std::cout << "error" << std::endl;
-        return "";
-    }
+	if (start == std::string::npos || end == std::string::npos) {
+		return "";  // String is all whitespaces
+	}
+	return str.substr(start, end - start + 1);
 }
 
 std::string request::removeAndSetQueryString(const std::string& uri) {
@@ -158,49 +246,118 @@ std::string request::removeAndSetQueryString(const std::string& uri) {
 	return uri;
 }
 
-int request::checkRequestLine(std::string request)
+void request::setErrorPage(std::string statusCode, std::string errorMsg)
 {
-	std::istringstream stream(request);
-	std::string line;
-	std::getline(stream, line);
+	int key = extractStatusCode(statusCode);
 
-	std::istringstream stream2(line);
+	this->statusCode = statusCode;
+	this->ContentType = "text/html";
 
-	// std::cout << line << std::endl;
+	if (errorpages.find(key) != errorpages.end()) {
 
-	stream2 >> this->method >> this->requestURI >> this->httpVersion;
+		if (access(errorpages[key].c_str(), R_OK) == 0) {
+			setFilePath(errorpages[key]);
+		}
+		else {
+			this->filePath = errorPageTamplate(errorMsg);
+		}
+	}
+	else {
+		this->filePath = errorPageTamplate(errorMsg);
+	}
+}
+
+int charToHexadecimal(char ch) {
+	if (isdigit(ch))
+		return ch - '0';
+	else if (ch >= 'a' && ch <= 'f')
+		return ch - 'a' + 10;
+	else if (ch >= 'A' && ch <= 'F')
+		return ch - 'A' + 10;
+	else
+		return -1; // Invalid hex character
+}
+
+std::string	URIEncoding(std::string	&path)
+{
+	std::string res;
+	for (int i = 0; i < (int)path.length(); ++i) {
+		if (path[i] == '+') {
+			res += ' ';
+			i++;
+		}
+		if (path[i] == '%') {
+			if (i + 2 < (int)path.length() && isxdigit(path[i + 1]) && isxdigit(path[i + 2])) {
+				char high = charToHexadecimal(path[i + 1]);
+				char low = charToHexadecimal(path[i + 2]);
+				if (high != -1 && low != -1) {
+					res += high * 16 + low;
+					i += 2;
+				} else {
+					res += path[i];
+				}
+			} else {
+				res += path[i];
+			}
+		} else {
+			res += path[i];
+		}
+	}
+	return res;
+}
+
+
+int request::checkRequestLine(std::string request, int state)
+{
+	if (gotRequestLine == false) {
+		std::istringstream stream(request);
+		std::string line;
+		std::getline(stream, line);
+
+		std::istringstream stream2(line);
+
+		if (!this->method.empty() || !this->requestURI.empty() || !this->httpVersion.empty()) {
+			return 0;
+		}
+		stream2 >> this->method >> this->requestURI >> this->httpVersion;
+		gotRequestLine = true;
+		// this->requestURI = URIEncoding(this->requestURI);
+	}
+
+	if (state == headerFieldState || state == headersDoneState) {
+		if (this->method.empty() || this->requestURI.empty() || this->httpVersion.empty() ) {
+			// cout << "HERE1" << endl;
+			setErrorPage("400 Bad Request", "400, Bad Request");
+			return 1;
+		}
+	}
+
 	this->requestURI = removeAndSetQueryString(this->requestURI);
 	if (this->method != "GET" && this->method != "POST" && this->method != "DELETE") {
-		this->statusCode = 405;
-		this->filePath = errorPageTamplate("405, Method Not Allowed.");
+		setErrorPage("405 Method Not Allowed", "405, Method Not Allowed.");
 		return 1;
-		printError("Method Not Allowed", 405);
 	}
 	if (this->requestURI.find_first_not_of("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~:/?#[]@!$&'()*+,;=%") != std::string::npos) {
-		this->statusCode = 400;
-		this->filePath = errorPageTamplate("400, Bad Request");
+			// cout << "HERE2" << this->requestURI << endl;
+
+		setErrorPage("400 Bad Request", "400, Bad Request");
 		return 1;
-		printError("Bad Request", 400);
 	}
-	if (this->requestURI.size() > 2048)/* mazal request body larger than lbody li fl config file !!*/ {
-		this->statusCode = 414;
-		this->filePath = errorPageTamplate("414, Bad Request");
+	if (this->requestURI.size() + this->queryString.size() > 2048)/* mazal request body larger than lbody li fl config file !!*/ {
+		// cout << RED << "HERE" << RESET_TEXT << endl;
+		setErrorPage("414 URI Too Long", "414, URI Too Long.");
 		return 1;
-		printError("Bad Request", 414);
 	}
 	if (this->httpVersion != "HTTP/1.1") {
-		this->statusCode = 505;
-		this->filePath = errorPageTamplate("505, HTTP Version Not Supported");
+		setErrorPage("505 HTTP Version Not Supported", "505, HTTP Version Not Supported");
 		return 1;
-		printError("HTTP Version Not Supported", 505);
 	}
+	this->requestURI = URIEncoding(this->requestURI);
 	return 0;
 }
 
-int request::checkHeaderFields(std::string headerFiles)
+int request::checkHeaderFields(std::string headerFiles, int state)
 {
-	// std::cout << request::method << std::endl;
-
 	std::string line;
 	std::vector<std::string> lines;
 		
@@ -212,253 +369,281 @@ int request::checkHeaderFields(std::string headerFiles)
 
 	for (std::vector<std::string>::iterator i = lines.begin(); i != lines.end(); i++) {
 		if (i->find(":") != std::string::npos) {
-			this->headerFields[i->substr(0, i->find(":"))] = i->substr(i->find(":") + 2);
+			this->headerFields[removewhites(i->substr(0, i->find(":")))] = removewhites(i->substr(i->find(":") + 2));
 		}
 	}
-	if (headerFields.find("Transfer-Encoding") != headerFields.end()
-		&& headerFields["Transfer-Encoding"].find("chunked") == std::string::npos) {
-		this->statusCode = 501;
-		this->filePath = errorPageTamplate("501, Not implemented");
-		return 1;
-		printError("Not implemented", 501);
+	if (headerFields.find("Host") == headerFields.end() && state == headersDoneState) {
+		setErrorPage("400 Bad Request", "400, Bad Request");
+		return 2;
 	}
 	if (headerFields.find("Transfer-Encoding") == headerFields.end()
 		&& headerFields.find("Content-Length") == headerFields.end()
 		&& this->method == "POST") {
-		this->statusCode = 400;
-		this->filePath = errorPageTamplate("400, Bad Request");
+		setErrorPage("400 Bad Request", "400, Bad Request");
 		return 1;
-		printError("Bad Request", 400);
 	}
-	// if (getMethod() == "GET") {
-	// 	cout << "ra dart mn hna" << endl;
-	// 	return 1;
-	// }
+	if (headerFields.find("Transfer-Encoding") != headerFields.end()
+		&& headerFields["Transfer-Encoding"] != "chunked") {
+		setErrorPage("501 Not implemented", "501, Not implemented");
+		return 1;
+	}
 	return 0;
 }
 
-void printChar(char c)
+std::string getTheExtensionFromContentType(std::string daContentType)
 {
-	if (c == '\n')
-		std::cout << CYAN << "/n" << RESET_TEXT << std::endl;
-	else if (c == '\r')
-		std::cout << CYAN << "/r" << RESET_TEXT << std::endl;
-	else
-		std::cout << CYAN << c << RESET_TEXT << std::endl;
+	// Find the position of the '/'
+	size_t slashPos = daContentType.find('/');
+
+	if (slashPos != std::string::npos) {
+		// Extract the substring after the '/'
+		std::string fileType = daContentType.substr(slashPos + 1);
+
+		// Replace any '+' characters with '_' (e.g., image/jpeg -> jpeg)//!
+		size_t plusPos = fileType.find('+');
+		while (plusPos != std::string::npos) {
+			fileType[plusPos] = '_';
+			plusPos = fileType.find('+', plusPos + 1);
+		}
+		// Return the file extension
+		return "." + fileType;
+	} else {
+		// Return an empty string if no '/' is found
+		return "";
+	}
 }
 
-request::ParsingStatus request::parsChunked(char c)
-{
-	// cout << RED << "the char id: " << c << RESET_TEXT << endl;
-	switch (currentChunkedState) {
-	case Initial: {
-		if (c == '\r') {
-			currentChunkedState = request::ChunkDataCrLf;
-		}
-		else if (isxdigit(c)) {
-			currentChunkedState = request::ParsingChunkSize;
-		} 
-		else {
-			// error = "jdskjfkldjs";
-			return request::ParsingFailed;
-		}
-	}
-	case ParsingChunkSize: {
-		if (isxdigit(c)) {
-			chunkSize = (chunkSize * 16) + (isdigit(c) ? (c - '0') : (toupper(c) - 'A' + 10));
-			// cout << "the c num is: " << c << " and chunksize is: " << chunkSize << endl;
-			break;
-		}
-	}
-	case AfterChunkSizeSpace: {
-		if (c == ' ' || c == '\t')
-			break;
-		if (c == '\r') {
-			currentChunkedState = request::ChunkSizeCarriageReturn;
-			break;
-		} else if (c == ';')
-		{
-			// parser.error = "faild chunked body";
-			return request::ParsingFailed; // specific error should be returned
-		}
-		else
-			return request::ParsingFailed;
-	}
-	case ChunkSizeCarriageReturn: {
-		if (c == '\n') {
-			currentChunkedState = request::ParsingChunkData;
-			break;
-		} else
-		{
-			// parser.error = "faild chunked body";
-			return request::ParsingFailed;
-		}
-	}
-	case ParsingChunkData: {
-		if (chunkSize == 0) {
-			return request::ParsingDone;
-		}
-		// cout << "ja hna  +++++++++++++++++++++" << chunkSize << endl;
-		chunkSize--;
-		std::ofstream outputFile("theBodyContentIsHere", std::ios::app);
+std::string generateRandomFileName() {
+	std::string characters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+	const int length = 8;
 
-			// cout << "ja hna +++++++++++++++++++++" << endl;
-		if (outputFile.is_open() && this->method != "GET")
+	std::string randomFileName;
+	srand(static_cast<unsigned>(time(0)));
+
+	for (int i = 0; i < length; ++i) {
+		int randomIndex = rand() % characters.length();
+		randomFileName += characters[randomIndex];
+	}
+
+	return randomFileName;
+}
+
+int hexCharToInt(char hexChar) {
+	if (isdigit(hexChar))
+		return hexChar - '0';
+	else if (islower(hexChar))
+		return hexChar - 'a' + 10;
+	else if (isupper(hexChar))
+		return hexChar - 'A' + 10;
+	else
+		return -1; // Invalid hex character
+}
+
+unsigned int hexToDecimal(const std::string& hexString) {
+	unsigned int decimalValue = 0;
+	for (size_t i = 0; i < hexString.length(); ++i) {
+		int digitValue = hexCharToInt(hexString[i]);
+		if (digitValue == -1) {
+			// Invalid hex character
+			// You might want to handle this case differently depending on your requirements
+			std::cerr << "Invalid hex character: " << hexString[i] << std::endl;
+			return 0; // Return 0 in case of error
+		}
+		decimalValue = (decimalValue << 4) + digitValue;
+	}
+	return decimalValue;
+}
+
+request::ParsingStatus request::parseChunked(std::string body, server& _server)
+{
+	std::string fileName;
+	if ((int)body.size() > _server.getClientBodyLimit()) {
+		setErrorPage("413 Request Entity Too Large", "413, Request Entity Too Large");
+		return ParsingFailed;
+	}
+	std::istringstream stream(body);
+	while (true) {
+		std::string chunkSizeHex;
+		std::getline(stream, chunkSizeHex);
+
+		// Convert hex string to integer
+		// std::istringstream iss(chunkSizeHex);
+		std::size_t chunkSize;
+		chunkSize = hexToDecimal(removewhites(chunkSizeHex));
+		// iss >> std::hex >> chunkSize;
+
+		// if (iss.fail()) {
+		// 	setErrorPage("500 Internal Server Error", "500, Internal Server Error.");
+		// 	return ParsingFailed;
+		// }
+		// Check for the end of chunks
+		if (chunkSize == 0) {
+			break;
+		}
+
+		// Read the chunk data
+		std::string chunkData(chunkSize, '\0');
+		stream.read(&chunkData[0], chunkSize);
+
+		// Consume the CRLF at the end of the chunk
+		std::string crlf;
+		std::getline(stream, crlf);
+		fileName = generateRandomFileName() + getTheExtensionFromContentType(this->uploadContentType);
+		std::ofstream outputFile("upload/" + fileName, std::ios::app);
+		if(!outputFile.is_open())
 		{
-			// cout << "dsjfhh" << endl;
-			outputFile << c;
+			setErrorPage("500 Internal Server Error", "500, Internal Server Error.");
+			return ParsingFailed;
+		}
+		if(outputFile.is_open())
+		{
+			setUploadPath("upload/" + fileName);
+			outputFile << chunkData;
+			if (outputFile.fail()) {
+				outputFile.close();
+				setErrorPage("507 Insufficient Storage", "507, Insufficient Storage.");
+				return ParsingFailed;
+			}
 			outputFile.close();
 		}
-		else
-		{
-			// parser.error = "faild chunked body";
+		if (outputFile.fail()) {
+			outputFile.close();
+			setErrorPage("507 Insufficient Storage", "507, Insufficient Storage.");
 			return ParsingFailed;
 		}
-		if (chunkSize == 0) {
-			currentChunkedState = request::ChunkDataCarriageReturn;
-		}
-		break;
-	}
-	case ChunkDataCarriageReturn: {
-		if (c != '\r')
-		{
-			// parser.error = "faild chunked body";
-			return request::ParsingFailed;
-		}
-		currentChunkedState = request::ChunkDataCrLf;
-		break;
-	}
-	case ChunkDataCrLf: {
-		if (c != '\n')
-		{
-			// parser.error = "faild chunked body";
-			return request::ParsingFailed;
-		}
-		currentChunkedState = request::Initial;
-		break;
-	}
-}
-return request::ParsingContinue;
-}
-
-request::ParsingStatus request::checkBody(std::string body, server& _server)
-{
-	if ((int)body.size() > _server.getClientBodyLimit()) {
-		this->statusCode = 413;
-		this->filePath = errorPageTamplate("413, Request Entity Too Large");
-		return ParsingFailed;
-		printError("Request Entity Too Large", 413);
-	}
-	if (chunkSize == 0)
-		currentChunkedState = Initial;
-	else if (chunkSize > 0)
-		currentChunkedState = ParsingChunkData;
-	// cout << BLUE << "currentChunkedState is: " << currentChunkedState << " and chunk size is: "<< chunkSize <<"and c= " << RESET_TEXT << endl;
-	for (size_t i = 0; i < body.size(); ++i)
-	{
-		char currentChar = body[i];
-		ParsingStatus status = parsChunked(currentChar);
-		switch (status)
-		{
-		case ParsingContinue:
-			break;// Continue parsing
-		case ParsingFailed:
-			return ParsingFailed;
-		case ParsingDone:
-			currentChunkedState = Initial;// Reset state to Initial for the next chunk
-			break;
-		}
-	}
-	// cout << RED << "the parsing is done 2" << RESET_TEXT << endl;
-	return ParsingDone;
-}
-
-request::ParsingStatus request::checkBody2(std::string body, server& _server)
-{
-	if ((int)body.size() > _server.getClientBodyLimit()) {
-		this->statusCode = 413;
-		this->filePath = errorPageTamplate("413, Request Entity Too Large");
-		return ParsingFailed;
-		printError("Request Entity Too Large", 413);
-	}
-	std::ofstream outputFile("theBodyContentIsHere", std::ios::app);
-	if (outputFile.is_open() && this->method != "GET") {
-		outputFile << body;
 		outputFile.close();
 	}
-	bodyContentLength += body.size();
 	return ParsingDone;
 }
 
-request::ParsingStatus request::checkBody3(std::string body, server& _server)
+request::ParsingStatus request::parseContentLength(std::string body, server& _server)
 {
 	if ((int)body.size() > _server.getClientBodyLimit()) {
-		this->statusCode = 413;
-		this->filePath = errorPageTamplate("413, Request Entity Too Large");
+		setErrorPage("413 Request Entity Too Large", "413, Request Entity Too Large");
 		return ParsingFailed;
-		printError("Request Entity Too Large", 413);
 	}
-	// std::istringstream iss(string(&body[0], &body[0] + body.size()));
-	std::istringstream iss(body);
-
-	std::string line;
-	std::string filename;
-
-    while (getline(iss, line)) {
-		if (line.find(boundary) != std::string::npos && flag == 0) {
-			getline(iss, line);// skip boundary
-			flag = 1;
-		}
-		// if (line.compare(boundary + "--") == 0) {
-		// 		// end of file upload
-		// 		break;
-		// }
-		if (line.find("Content-Disposition:") != std::string::npos)
-		{
-			bodyContentLength++;//? added to handel when there is no body
-			gg = 1;
-			if (line.find("filename=\"") != std::string::npos) {
-				size_t filename_start = line.find("filename=\"") + 10;
-				size_t filename_end = line.find('\"', filename_start);
-				if (filename_start != std::string::npos && filename_end != std::string::npos) {
-					filename = line.substr(filename_start, filename_end - filename_start);
-				}
-				getline(iss, line); // skip Content-Type line
-				getline(iss, line); // skip empty line
-			}
-			else {
-				filename = "form_field.txt";
-				getline(iss, line); // skip empty line
-			}
-		}
-		std::ofstream outputFile("filename", std::ios::app); //std::ios::binary);
-		if (outputFile.is_open()) {
-			cout << BLACK << line << RESET_TEXT << endl;
-			if (gg == 0 || bodyContentLength == 1) {
-				outputFile << line + '\n' ;//<< std::endl;
-				// outputFile << std::endl;
-				bodyContentLength += line.size() + 1;
-			}
-			while (getline(iss, line)) {
-				gg = 0;
-				if (line.find(boundary) != std::string::npos || line.find(boundary + "--") != std::string::npos) {
-					flag = 0;
-					break;
-				}
-				// if (line == "\r")
-				// 	continue;
-				cout << BLACK << line << RESET_TEXT << endl;
-				if (iss.tellg() != -1)
-					outputFile << line + '\n' ;//<< std::endl;
-				else
-					outputFile << line;
-				bodyContentLength += line.size() + 1;
-			}
+	std::string fileName;
+	fileName = generateRandomFileName() + getTheExtensionFromContentType(this->uploadContentType);
+	std::ofstream outputFile("upload/" + fileName, std::ios::app);
+	if(!outputFile.is_open())
+	{
+		setErrorPage("500 Internal Server Error", "500, Internal Server Error.");
+		return ParsingFailed;
+	}
+	if (outputFile.is_open()) {
+		setUploadPath("upload/" + fileName);
+		outputFile << body;
+		if (outputFile.fail()) {
 			outputFile.close();
-			if (line.find(boundary + "--") != std::string::npos) {
-				bodyContentLength = this->actualContentLength;
+			setErrorPage("507 Insufficient Storage", "507, Insufficient Storage.");
+			return ParsingFailed;
+		}
+	}
+	if (outputFile.fail()) {
+		outputFile.close();
+		setErrorPage("507 Insufficient Storage", "507, Insufficient Storage.");
+		return ParsingFailed;
+	}
+	bodyContentLength += body.size();
+	outputFile.close();
+	return ParsingDone;
+}
+
+std::string extractFilename(const std::string& boundaryHeaders) {
+	std::string filename;
+	size_t filenamePos = boundaryHeaders.find("filename=\"");
+	
+	if (filenamePos != std::string::npos) {
+		filenamePos += 10;  // Move to the start of the filename
+		size_t endPos = boundaryHeaders.find("\"", filenamePos);
+
+		if (endPos != std::string::npos) {
+			filename = boundaryHeaders.substr(filenamePos, endPos - filenamePos);
+		}
+	}
+	else
+		filename = "newname";
+	return filename;
+}
+
+bool fileExists2(const std::string& fileName) {
+    std::ifstream file(fileName.c_str());
+    return file.is_open();
+}
+
+std::string generateNewFileName(const std::string& fileName) {
+	size_t dotPosition = fileName.find_last_of('.');
+	std::string baseName;
+	std::string extension;
+	if (dotPosition != std::string::npos) {
+		baseName = fileName.substr(0, dotPosition);
+		extension = fileName.substr(dotPosition);
+	}
+	else {
+		baseName = fileName;
+		extension = "";
+	}
+
+	int counter = 2;
+	std::string newFileName;
+	newFileName = fileName;
+	bool exist = fileExists2("upload/" + fileName);
+	while (exist)
+	{
+		std::ostringstream oss;
+		oss << baseName << counter << extension;
+		newFileName = oss.str();
+		exist = fileExists2("upload/" + newFileName);
+		counter++;
+	}
+
+	return newFileName;
+}
+
+request::ParsingStatus request::parseBoundary(std::string body, server& _server)
+{
+	if ((int)body.size() > _server.getClientBodyLimit()) {
+		setErrorPage("413 Request Entity Too Large", "413, Request Entity Too Large");
+		return ParsingFailed;
+	}
+	size_t pos = 0;
+	size_t nextPos = 0;
+	while ((nextPos = body.find(boundary, pos)) != std::string::npos)
+	{
+		std::string part = body.substr(pos, nextPos - pos);
+		if (part.find("\r\n\r\n") != std::string::npos)
+		{
+			std::string fileName = extractFilename(part.substr(0, part.find("\r\n\r\n")));
+			fileName = generateNewFileName(fileName);
+			std::ofstream outputFile("upload/" + fileName);
+			if(!outputFile.is_open())
+			{
+				setErrorPage("500 Internal Server Error", "500, Internal Server Error.");
+				return ParsingFailed;
+			}
+			if (outputFile.is_open())
+			{
+				setUploadPath("upload/" + fileName);
+				std::string bodySent = part.substr(part.find("\r\n\r\n") + 4);
+				if (bodySent.empty() || bodySent == "\r\n") {
+					unlink(("upload/" + fileName).c_str());
+				}
+				outputFile << bodySent.substr(0, bodySent.size() - 2);
+				if (outputFile.fail()) {
+					outputFile.close();
+					setErrorPage("507 Insufficient Storage", "507, Insufficient Storage.");
+					return ParsingFailed;
+				}
+				outputFile.close();
+				if (outputFile.fail()) {
+					outputFile.close();
+					setErrorPage("507 Insufficient Storage", "507, Insufficient Storage.");
+					return ParsingFailed;
+				}
+				outputFile.close();
 			}
 		}
+		pos = nextPos + boundary.length();
 	}
 	return ParsingDone;
 }
@@ -525,7 +710,7 @@ bool fileExists(const char* path) {
 	if (stat(path, &fileInfo) != 0) {
 		return false;
 	}
-	return S_ISREG(fileInfo.st_mode);
+	return (S_ISREG(fileInfo.st_mode) || S_ISDIR(fileInfo.st_mode));
 }
 
 int request::matchLocation(server& _server)
@@ -533,33 +718,29 @@ int request::matchLocation(server& _server)
 	std::vector<Location> vec;
 	vec = _server.getLocations();
 	std::string paths = this->requestURI;
-
-	// std::cout << MAGENTA << "***** the path *****" << paths << RESET_TEXT << std::endl;
-
-	if (fileExists(paths.c_str()))
-	{
-		std::cout << GREEN << "***** flbla *****" << RESET_TEXT << std::endl;
-		filePath = this->requestURI;
-		if (filePath[0] == '/')
-			filePath = filePath.substr(1);
-		return 0;
+	
+	std::vector<server> srvrs = _server.getSmSoServers();
+	for (std::vector<server>::iterator it = srvrs.begin(); it != srvrs.end(); it++) {
+		if (it->getServerName() == removewhites(this->headerFields["Host"])) {
+			vec = it->getLocations();
+		}
 	}
 
 	while (!paths.empty())
 	{
-		// std::cout << GREEN << "***** looping *****" << RESET_TEXT << std::endl;
 		for (std::vector<Location>::iterator it = vec.begin(); it != vec.end(); it++) {
-			// std::cout << RED << "is LOCATION: " << it->getLocationName() << "\t\tequal to URI: " << paths << RESET_TEXT << std::endl;
-
 			if (it->getLocationName() == paths) {
-				std::cout << GREEN << "*****FOUND A MATCH*****" << RESET_TEXT << std::endl;
 				filePath = it->getRoot() + this->requestURI;
+				if (!it->getRedirection().empty()) {
+					redirectURL = it->getRedirection();
+				}
 				if (isDirectory(filePath.c_str())) {
-				std::cout << GREEN << "*****FOUND A MATCH 22 *****" << RESET_TEXT << std::endl;
-					filePath = filePath + it->getIndex();
+					if (filePath[filePath.size() - 1] == '/')
+						filePath = filePath + it->getIndex();
+					if (!it->getRedirection().empty())
+						redirectURL = it->getRedirection();
 				}
 				loc = *it;
-				// cout << BLUE <<loc.getCgiPath()<< RESET_TEXT << endl;
 				if (filePath[0] == '/')
 					filePath = filePath.substr(1);
 				return 0;
@@ -579,118 +760,74 @@ int request::matchLocation(server& _server)
 
 int request::parseRequest(std::string request, server& _server)
 {
-	cout << BLUE << "KIDOZ MN HNA _++++++++++++++++++++++++++99"<< RESET_TEXT << endl;
-		// cout << BLUE << "wajadnah ..............................." << RESET_TEXT << endl;
-	std::cout << WHITE << request << RESET_TEXT << std::endl;
-	std::cout << MAGENTA << currentChunkedState << " &&& "<< bodyContentLength << RESET_TEXT << std::endl;
-	if (currentChunkedState != ParsingChunkData && bodyContentLength == 0) {
-	cout << BLUE << "KIDOZ MN HNA _++++++++++++++++++++++++++ taking request line 990001"<< RESET_TEXT << endl;
-		if (checkRequestLine(request))
-			return 1;
-	}
-
-	if (currentChunkedState != ParsingChunkData && bodyContentLength == 0) {
-	cout << BLUE << "KIDOZ MN HNA _++++++++++++++++++++++++++ taking header fields 990002"<< RESET_TEXT << endl;
-		if (checkHeaderFields(request.substr(0, request.find("\r\n\r\n")))){
-			return 1;
-		}
-	}
-	// cout << BLUE << "KIDOZ MN HNA _++++++++++++++++++++++++++ ou 99000"<< RESET_TEXT << endl;
-	setContentLength();//!
-	setContentType();
-	// if (matchLocation(_server)) {
-	// std::cout << MAGENTA << "NO location matched" << RESET_TEXT << std::endl;
-	// }
-	/*remove the / from the begining of the path*/
-	// if (filePath[0] == '/')
-	// 	filePath = filePath.substr(1);
-	// if (!fileExists(filePath.c_str()))
-	// {
-	// 	this->statusCode = 404;
-	// 	this->filePath = errorPageTamplate("404, Not Found.");
-	// 	return 1;
-	// 	printError("Not Found.", 404);
-	// }
-	if (getMethod() == "GET")
+	if (request.empty()) {
 		return 1;
-	std::ofstream outputFile("sheeeeeeeeeee", std::ios::app); //std::ios::binary);
-		if (outputFile.is_open()) {
-			outputFile << request;
-		}
-		// cout << BLUE << "wajadnah ..............................."<< bodyContentLength << RESET_TEXT << endl;
-	if (bodyContentLength > 0 && bodyContentLength < this->actualContentLength)
-	{
-		cout << BLUE << "wajadnah ............................... in content length body condition _ _________________"<< RESET_TEXT << endl;
-		if (headerFields.find("Content-Type") != headerFields.end()
-			&& headerFields["Content-Type"].find("multipart/form-data") != std::string::npos) {
-			checkBody3(request, _server);
-			cout << BLUE << "wajadnah ............................... in content length body |boundary after it get headers| condition _ _________________"<< RESET_TEXT << endl;
-
-		}
-		else {
-
-			cout << BLUE << "wajadnah ............................... in content length body |No boundary after getting headers| condition _ _________________"<< RESET_TEXT << endl;
-			checkBody2(request, _server);
-		}
 	}
-	else if (currentChunkedState == 4) {
-
-		cout << BLUE << "wajadnah ..............................   in chunked body after getting headers   .0"<< RESET_TEXT << endl;
-		checkBody(request, _server);
+	if (headerFields.find("Transfer-Encoding") != headerFields.end()) {
+		cout << MAGENTA << "UPLOAD WITH CHuNKED <>" << RESET_TEXT << endl;
+		parseChunked(request, _server);
 	}
 	else {
-		
-		if (headerFields.find("Transfer-Encoding") != headerFields.end()) {//!add chunked to this condition
-			cout << BLUE << "wajadnah ..........................    chunked with headers  ....1"<< RESET_TEXT << endl;
-			checkBody(request.substr(request.find("\r\n\r\n") + 4), _server);
+		if (headerFields.find("Content-Type") != headerFields.end()
+		&& headerFields["Content-Type"].find("multipart/form-data") != std::string::npos) {
+			cout << MAGENTA << "UPLOAD WITH BOuNDARY <>" << RESET_TEXT << endl;
+			parseBoundary(request, _server);
+			std::string extension = getFileExtension(this->requestURI);
+			if (!extension.empty())
+				this->ContentType = allContTypes[extension];
 		}
 		else {
-			if (headerFields.find("Content-Type") != headerFields.end()
-			&& headerFields["Content-Type"].find("multipart/form-data") != std::string::npos) {
-				cout << BLUE << "wajadnah ..........................     boundary with headers    .....2"<< RESET_TEXT << endl;
-				checkBody3(request.substr(request.find("\r\n\r\n") + 4), _server);
-			}
-			else {
-				checkBody2(request.substr(request.find("\r\n\r\n") + 4), _server);
-				cout << BLUE << "wajadnah ........................   content length with headers   .......3"<< RESET_TEXT << endl;
-			}
+			cout << MAGENTA << "UPLOAD WITH CONTENT LENGTH <>" << RESET_TEXT << endl;
+			parseContentLength(request, _server);
 		}
 	}
 
-	// cout << BLUE << "KIDOZ MN HNA _++++++++++++++++++++++++++"<< RESET_TEXT << endl;
 	if (headerFields["Transfer-Encoding"].find("chunked") != std::string::npos
 		&& headerFields.find("Content-Length") == headerFields.end()
 		&& chunkSize != 0) {
-			requestStatus = false;
-	cout << BLUE << "KIDOZ MN HNA _++++++++++++++++++++++++++ 1"<< RESET_TEXT << endl;
 			return 0;
 		}
 	else if (headerFields["Transfer-Encoding"].find("chunked") == std::string::npos
 		&& headerFields.find("Content-Length") != headerFields.end()
 		&& bodyContentLength < this->actualContentLength) {
 			if (bodyContentLength < this->actualContentLength)
-			requestStatus = false;
-	cout << BLUE << "KIDOZ MN HNA _++++++++++++++++++++++++++2"<< RESET_TEXT << endl;
 			return 0;
 		}
 	else if (headerFields["Transfer-Encoding"].find("chunked") != std::string::npos
 		&& headerFields.find("Content-Length") != headerFields.end()
 		&& chunkSize != 0) {
-			requestStatus = false;
-	cout << BLUE << "KIDOZ MN HNA _++++++++++++++++++++++++++3"<< RESET_TEXT << endl;
 			return 0;
 		}
 	else {
-	cout << BLUE << "KIDOZ MN HNA _++++++++++++++++++++++++++4"<< RESET_TEXT << endl;
-		cout <<MAGENTA << "HNA AAAAAAA@#$%^&" << RESET_TEXT <<endl;
 		return 1;
+	}
+	return 1;
+}
+
+
+bool	request::getConnection()
+{
+	return this->keepAlive;
+}
+
+void	request::setConnection()
+{
+	if (headerFields.find("Connection") != headerFields.end())
+	{
+		if (headerFields["Connection"].find("keep-alive") != std::string::npos) {
+			this->keepAlive = true;
+		}
+		else {
+			this->keepAlive = false;
+		}
 	}
 }
 
 void request::setContentType()
 {
 	addAllContentTypes();
-	if (this->method == "GET") {
+
+	if (this->method == "GET" || this->method == "POST") {
 		if (isDirectory(requestURI.c_str())) {
 			this->ContentType = "text/html";
 		}
@@ -701,25 +838,26 @@ void request::setContentType()
 			if (dotPosition != std::string::npos) {
 				fileExtension = requestURI.substr(dotPosition);
 			}
-			else {
-				std::cerr << "Error: No dot found in requestURI\n";
-			}
 			this->ContentType = allContTypes[fileExtension];
+			if (fileExtension == ".php" || fileExtension == ".py")
+				this->ContentType = "";
 		}
 	}
 	if (this->method == "POST") {
-		this->ContentType = this->headerFields["Content-Type"];
-		this->boundary = "--" + this->ContentType.substr(this->ContentType.find("boundary=") + 9);
-		size_t lastNonSpace = this->boundary.find_last_not_of(" \t\r\n");
-
-		if (lastNonSpace != std::string::npos) {
-			this->boundary.erase(lastNonSpace + 1);
+		if (this->headerFields.count("Content-Type") > 0 && !this->headerFields["Content-Type"].empty()){
+			this->uploadContentType = this->headerFields["Content-Type"];
+			this->boundary = "--" + this->uploadContentType.substr(this->uploadContentType.find("boundary=") + 9);
+			size_t lastNonSpace = this->boundary.find_last_not_of(" \t\r\n");
+			if (lastNonSpace != std::string::npos) {
+				this->boundary.erase(lastNonSpace + 1);
+			}
 		}
-		// cout << BLUE<< ">>>>>" <<this->boundary.size() << "|" << this->boundary << "|" << RESET_TEXT << endl;
-		// if (this->boundary[this->boundary.size() - 1] == '\r')
-		// 	this->boundary = this->boundary.substr(0, this->boundary.size() - 1);
-		// cout << BLUE<< ">>>>>" <<this->boundary.size() << "|" << this->boundary << "|" << RESET_TEXT << endl;
 	}
+}
+
+void	request::setContentType(std::string contentType)
+{
+	this->ContentType = contentType;
 }
 
 void	request::addAllContentTypes()
@@ -730,7 +868,6 @@ void	request::addAllContentTypes()
 	allContTypes[".avif"] = "image/avif";
 	allContTypes[".avi"] = "video/x-msvideo";
 	allContTypes[".azw"] = "application/vnd.amazon.ebook";
-	allContTypes[".bin"] = "application/octet-stream";
 	allContTypes[".bmp"] = "image/bmp";
 	allContTypes[".bz"] = "application/x-bzip";
 	allContTypes[".bz2"] = "application/x-bzip2";
@@ -800,4 +937,80 @@ void	request::addAllContentTypes()
 	allContTypes[".3gp"] = "video/3gpp"; // audio/3gpp
 	allContTypes[".3g2"] = "video/3gpp2"; // audio/3gpp2
 	allContTypes[".7z"] = "application/x-7z-compressed";
+}
+
+void request::getHeadersRequest(std::string requestPart) {
+	if (requestPart.find("\r\n") != std::string::npos) {
+		headersDone = headerFieldState;
+	}
+	if (requestPart.find("\r\n\r\n") != std::string::npos) {
+		headersDone = headersDoneState;
+	}
+	if (this->headers.find("\r\n\r\n") != std::string::npos)
+	{
+		headersDone = headersDoneState;
+	}
+	if (requestPart.find("\r\n\r\n") == std::string::npos) {
+		this->headers.append(requestPart);
+		if (this->headers.find("\r\n\r\n") != std::string::npos)
+		{
+			headersDone = headersDoneState;
+		}
+		return ;
+	}
+	if (requestPart.find("\r\n\r\n") != std::string::npos) {
+		this->headers.append(requestPart.substr(0, requestPart.find("\r\n\r\n")));
+		if (this->headers.find("\r\n\r\n") != std::string::npos)
+		{
+			headersDone = headersDoneState;
+		}
+		return ;
+	}
+	return ;
+}
+
+
+int request::getBodyRequest(std::string requestPart)
+{
+	if (headersDone) {
+		if (headersDone == headersDoneState) {
+			bodyContentLength += requestPart.substr(requestPart.find("\r\n\r\n") + 4).size();
+			this->theBody.append(requestPart.substr(requestPart.find("\r\n\r\n") + 4));
+			headersDone = bodyState;
+		}
+		else
+			this->theBody.append(requestPart);
+		if (headerFields.find("Content-Type") != headerFields.end()
+			&& headerFields["Content-Type"].find("multipart/form-data") != std::string::npos) {
+				if (requestPart.find(boundary + "--") != std::string::npos) {
+					return 1;
+				}
+		}
+		if (headerFields.find("Transfer-Encoding") != headerFields.end()
+			&& headerFields["Transfer-Encoding"].find("chunked") != std::string::npos) {
+				if (requestPart.find("\r\n0\r\n\r\n") != std::string::npos) {
+					return 1;
+				}
+		}
+		else {
+			if ((int)this->theBody.size() >= this->actualContentLength) {
+				return 1;
+			}
+		}
+	}
+	return 0;
+}
+
+void	request::setCgiHeader(std::string s){
+	this->cgi_header = s;
+}
+void	request::setCgiBody(std::string s){
+	this->cgi_body = s;
+}
+
+string request::getCgiBody(){
+	return this->cgi_body;
+}
+string request::getCgiHeader(){
+	return this->cgi_header;
 }

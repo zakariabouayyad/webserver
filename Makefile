@@ -2,10 +2,11 @@ NAME = webserv
 CPP = c++ -g
 FLAGS = -Wall -Wextra -Werror -std=c++98 #-fsanitize=address 
 SRC_FILES = main.cpp server/server.cpp server/main_loop.cpp response/response.cpp \
-			request/request.cpp client/client.cpp \
-			aubb/aubServer.cpp aubb/Location.cpp aubb/Config.cpp
+			request/request.cpp client/client.cpp client/Delete.cpp \
+			client/Get.cpp client/Post.cpp client/Utils.cpp \
+			Parsing/ParseServer.cpp Parsing/Location.cpp Parsing/Config.cpp cgi/Cgi.cpp
 OBJ_FILES = $(SRC_FILES:.cpp=.o)
-DEP  = server.hpp request/request.hpp aubb/Location.hpp aubb/Config.hpp
+DEP  = server.hpp request/request.hpp Parsing/Location.hpp Parsing/Config.hpp cgi/Cgi.hpp
 
 all: $(NAME)
 

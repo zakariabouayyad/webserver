@@ -27,38 +27,70 @@
 #include <algorithm>
 #include "request/request.hpp"
 #include "response/response.hpp"
-#include "aubb/Location.hpp"
-#include "aubb/Config.hpp"
+#include "Parsing/Location.hpp"
+#include "Parsing/Config.hpp"
+#include "cgi/Cgi.hpp"
+#include <ctime>
 
 
 using std::map;
 using std::vector;
 using std::string;
 using std::pair;
-
-//Client class
+class request;
+//utils
+int		checkExistance(request&);
+bool	endsWithSlash(const std::string&);
+void	isCGI(request&, const std::string&, server&);
+string	getFileExtension(const std::string&);
+void	generateAutoIndex(const std::string&, const std::string&);
+void	codeNpath(request&, string, string, map<int, string>);
+int		extractStatusCode(const std::string& response);
+void	internalServerError(int connection_socket);
+//
 class client
 {
 	request requestObj;
 	response responseObj;
+	// cgi cgiOBJ;
 	string responsestring;
-	bool	filesent;
+	int		filesent;
 	public:
-	bool	tookrequest;
+
+		enum requestStatus {
+			starting,
+			requestLineState,
+			headerFieldState,
+			headersDoneState,
+			bodyState,
+		};
+		map<int, string> errorpages;
+		bool keepAlive;
+		bool	tookrequest;
+		time_t resTime;
 		client(){
+			keepAlive = 0;
 			filesent = 0;
 			tookrequest = 0;
+			resTime = -1;
 		}
 		void	set_request(std::string, server&);
-		void	set_response(int);
+		int		set_response(int);
 		bool	getfilesent();
 		bool	getTookrequest();
 		void	setTookrequest(bool t){
 			tookrequest = t;
 		}
 		string getresponse();
+		void	reset();
+		//Client class
+		void	_delete_(request&);
+		void	_get_(request&, server&);
+		void	_post_(request&, server&);
+		void	requestCases(request &requestObj, server& _server);
+	int		cgisdone;
 };
-
+//
 class server{
 	string	port, serverName, request, response, ip;
 	bool is_default;
@@ -66,12 +98,13 @@ class server{
 	// ayoub ---------mnhna ltht(private)
 	string				root;
 	string				index;
-	int					client_body_limit;
+	long long			client_body_limit;
 	bool				autoindex;
 	bool				upload;
 	vector<string>		allow_methods;
 	map<int,string>		error_page;
-
+	vector< std::pair<string, string> >	cgi_exe;
+	vector<server>		smSoServers;
 	//===============
 	void	checkfirstline(std::string str, int line);
 	void	checklastline(std::string str, int line, int firstline);
@@ -93,6 +126,8 @@ class server{
 	void	Mylocations(std::vector<Location>&);
 	void	setmylocation(std::map<int, std::string>::const_iterator &it, std::map<int, std::string> &server);
 	void	Myupload(std::vector<std::string> list, int line);
+	void	Mycgi(std::vector<std::string> list, int line);
+	void	doublelocationcheck();
 	//================
 	public:
 		vector<Location>	locations;
@@ -129,6 +164,8 @@ class server{
 		void	setErrorPage(int, std::string);
 		void	setLocations(Location&);
 		void	setUpload(bool);
+		void	setCgiExe(std::vector< std::pair<std::string, std::string> >);
+		void	setSmSoServers(server &srv);
 
 		std::string	getServerName(void) const;
 		std::string	getPort(void) const;
@@ -141,6 +178,8 @@ class server{
 		std::vector< std::string>		getAllowMethods(void) const;
 		std::map<int, std::string>		getErrorPage(void) const;
 		std::vector<Location>			getLocations(void) const;
+		std::vector< std::pair<std::string, std::string> > getCgiExe(void) const;
+		std::vector<server>				getSmSoServers(void) const;
 		void	parse(std::map<int, std::string>&);
 		void	init();
 };
@@ -158,44 +197,5 @@ class serversInfos
 };
 
 void	main_loop(vector<server>);
-
-//REQUEST_CLASS
-// class request
-// {
-// 	string method;
-// 	string requestURI;
-// 	string httpVersion;
-// 	map<std::string, std::string> headerFields;
-// 	string body;
-
-// public:
-// 	request();
-// 	request(std::string req);
-// 	request(const request &other);
-// 	request& operator=(const request& other);
-// 	std::string getMethod();
-// 	void checkRequestLine(std::string request);
-// 	void checkHeaderFields(std::string headerFiles);
-// 	void parseRequest(std::string request);
-// 	void checkBody(std::string body);
-// 	string getrequestURI();
-// 	string getContentType();
-// };
-
-//RESPONSE_CLASS
-// class response{
-// 	// string http_version, status_code;
-// 	// map<string, string> header_fields;
-// 	// string	body;
-// 	string uri, contentType;
-// 	string res;
-// 	public:
-// 		void	set_res();
-// 		string	get_res();
-// 		void	setURI(string uri);
-// 		void	setcontentType(string contenttype);
-// };
-
-
 
 #endif

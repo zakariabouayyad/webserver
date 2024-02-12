@@ -13,12 +13,17 @@ class request;
 
 class response{
 	public:
+		response();
+		int		firstT;
+		time_t resTime;
+		std::string	header;
 		size_t	filesize;
 		size_t	totalSent;
 		char*	buffer;
 		void	initialize(request& request);
-		void	sendHeader(int connection_socket, request& request);
-		int		sendBody(int connection_socket, request& request);
+		int		sendHeader(int connection_socket, request& request);
+		int		sendBody(int connection_socket);
+		void	reset();
 };
 
 #endif

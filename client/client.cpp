@@ -5,188 +5,141 @@ using std::endl;
 using std::string;
 using std::vector;
 
-bool endsWithSlash(const std::string& str) {
-    if (str.length() == 0)
-        return false;
 
-    char lastChar = str[str.length() - 1];
-    return lastChar == '/';
-}
-
-void generateAutoIndex(const std::string& directoryPath, const std::string& outputFileName) {
-    DIR* dir = opendir(directoryPath.c_str());
-
-    if (!dir) {
-        std::cerr << "Error opening directory: " << strerror(errno) << std::endl;
-        return;
-    }
-
-    std::ofstream outputFile(outputFileName.c_str());
-
-    if (!outputFile.is_open()) {
-        std::cerr << "Error opening output file: " << strerror(errno) << std::endl;
-        closedir(dir);
-        return;
-    }
-
-    // Write HTML header
-    outputFile << "<html><head><title>Index of " << directoryPath << "</title></head><body>\n";
-    outputFile << "<h2>Index of " << directoryPath << "</h2>\n";
-    outputFile << "<ul>\n";
-
-    // Read directory contents
-    struct dirent* entry;
-
-    while ((entry = readdir(dir)) != NULL) {
-        std::string entryName = entry->d_name;
-
-        // Skip current and parent directory entries
-        if (entryName != "." && entryName != "..") {
-            // Create links for each entry
-            outputFile << "<li><a href=\"" << entryName << "\">" << entryName << "</a></li>\n";
-        }
-    }
-
-    // Write HTML footer
-    outputFile << "</ul></body></html>\n";
-
-    outputFile.close();
-    closedir(dir);
-
-    std::cout << "Autoindexing completed. Output file: " << outputFileName << std::endl;
-}
-
-std::string getFileExtension(const std::string& filePath) {
-    std::string::size_type dotPos = filePath.rfind('.');
-
-    if (dotPos != std::string::npos) {
-        return filePath.substr(dotPos);
-    }
-
-    return "";
-}
-
-void	requestCases(request &requestObj, server& _server)
+void	client::requestCases(request &requestObj, server& _server)
 {
-	if (requestObj.getMethod() == "GET") {
-		if (!fileExists(requestObj.getFilePath().c_str()) && !isDirectory(requestObj.getFilePath().c_str())) {
-			requestObj.setStatusCode(404);
-			requestObj.setFilePath(errorPageTamplate("404, Not Found."));
-			return ;
+	int methodExist = 0;
+	std::vector<std::string> methods = requestObj.loc.getAllowMethods();
+	std::vector<std::string>::iterator it = methods.begin();
+	for (;it != methods.end();it++) {
+		if (*it == requestObj.getMethod()){
+			methodExist = 1;
+			break;
 		}
-		if (isDirectory(requestObj.getFilePath().c_str()))
-		{
-			if (!endsWithSlash(requestObj.getFilePath()))
-			{
-				requestObj.setStatusCode(301);
-				requestObj.setFilePath(requestObj.getFilePath() + "/");
-				return ;
-			}
-			if (!_server.getIndex().empty()) {
-				if (!_server.getAutoindex()) {
-					requestObj.setStatusCode(403);
-					requestObj.setFilePath(errorPageTamplate("403, Forbidden."));
-					return ;
-				}
-				else {
-					generateAutoIndex(requestObj.getFilePath(), "autoindex.html");//?need to do lmsa l file d index
-					requestObj.setStatusCode(200);
-					requestObj.setFilePath("autoindex.html");
-					return ;
-				}
-			}
-			else {
-				if (getFileExtension(requestObj.getFilePath()) == ".php"
-					|| getFileExtension(requestObj.getFilePath()) == ".py") {
-					cout << RED << "hna dakchi f cgi" << RESET_TEXT << endl;
-				}
-			}
-		}
-		else {
-			if (getFileExtension(requestObj.getFilePath()) == ".php"
-				|| getFileExtension(requestObj.getFilePath()) == ".py") {
-				cout << RED << "ta hna dakchi f cgi" << RESET_TEXT << endl;
-			}
-		}
-//!if uri in get has "?" take until ?
+	}	
+	if (!methodExist) {
+		codeNpath(requestObj,"405 Method Not Allowed", errorPageTamplate("405, Method Not Allowed.").c_str(), errorpages);
+		return ;
 	}
-	else if (requestObj.getMethod() == "POST") {
-		if (_server.getUpload()) {//? belhadj khasso ybelel upload l location 
-			cout << BLUE << "UPLOAD IS ON |";
-			cout << requestObj.getContentType();
-			cout << "||" << RESET_TEXT << endl;
-			// cout << RED << "UPLOAD IS ON " << requestObj.getContentType() << RESET_TEXT << endl;
-		}
-		if (!_server.getUpload())
-				cout << RED << "UPLOAD IS OFF" << RESET_TEXT << endl;
-		if (!fileExists(requestObj.getFilePath().c_str()) && !isDirectory(requestObj.getFilePath().c_str())) {
-			requestObj.setStatusCode(404);
-			requestObj.setFilePath(errorPageTamplate("404, Not Found."));
-			return ;
-		}
-		if (isDirectory(requestObj.getFilePath().c_str()))
-		{
-			if (!endsWithSlash(requestObj.getFilePath()))
-			{
-				requestObj.setStatusCode(301);
-				requestObj.setFilePath(requestObj.getFilePath() + "/");
-				return ;
-			}
-			else {
-				if (!_server.getIndex().empty()) {
-					requestObj.setStatusCode(403);
-					requestObj.setFilePath(errorPageTamplate("403, Forbidden."));
-					return ;
-				}
-				else {
-					if (getFileExtension(requestObj.getFilePath()) == ".php"
-						|| getFileExtension(requestObj.getFilePath()) == ".py") {
-						cout << RED << "hna dakchi f cgi" << RESET_TEXT << endl;
-					}
-				}
-			}
-		}
-		else {
-			if (getFileExtension(requestObj.getFilePath()) == ".php"
-				|| getFileExtension(requestObj.getFilePath()) == ".py") {
-				cout << RED << "ta hna dakchi f cgi" << RESET_TEXT << endl;
-			}
-		}
-	}
-	else if (requestObj.getMethod() == "DELETE") {
-
-	}
+	if (requestObj.getMethod() == "GET")
+		_get_(requestObj,_server);
+	else if (requestObj.getMethod() == "POST") 
+		_post_(requestObj,_server);
+	else if (requestObj.getMethod() == "DELETE")
+		_delete_(requestObj);
 }
 
 void	client::set_request(string r, server& _server){
-	std::ofstream outputFile("debugBody", std::ios::app);
-		if (outputFile.is_open()) {
-			outputFile << r;
-			outputFile << "\n___________________________________\n";
-			outputFile.close();
+	errorpages = _server.getErrorPage();
+	requestObj.errorpages = _server.getErrorPage();
+	if (requestObj.headersDone == starting || requestObj.headersDone == headerFieldState) {
+		requestObj.getHeadersRequest(r);
+	}
+	if (requestObj.headersDone == requestLineState || requestObj.headersDone == headersDoneState) {
+		if (requestObj.checkRequestLine(requestObj.headers, requestObj.headersDone)) {
+			requestObj.failHeader = true;
+			tookrequest = 1;
 		}
-		cout << "tookrequest is " << tookrequest<< endl;
-    tookrequest = requestObj.parseRequest(r, _server);
-	
-    if (tookrequest == 1) {
-		cout << "tookrequest is 1" << endl;
-		requestObj.matchLocation(_server);
-		requestCases(requestObj, _server);
-		cout << RED<< "|" << requestObj.getFilePath() << "|" << RESET_TEXT << endl;
+	}
+	if (requestObj.headersDone == headerFieldState || requestObj.headersDone == headersDoneState) {
+		int s = requestObj.checkHeaderFields(requestObj.headers, requestObj.headersDone);
+		cout << s<< " and > " << requestObj.headersDone << endl;
+		if (s == 1) {
+			requestObj.failHeader = true;
+			tookrequest = 1;
+		}
+		else if (s == 2 && requestObj.headersDone == headersDoneState) {
+			requestObj.failHeader = true;
+			tookrequest = 1;
+		}
+	}
+	if (requestObj.failHeader && tookrequest) {
 		responseObj.totalSent = 0;
-		responseObj.initialize(requestObj);
+		if (requestObj.getMethod() != "DELETE" && requestObj.getredirectURL().empty()) {
+			cout << "++++++++++++++ 1" << endl;
+			responseObj.initialize(requestObj);
+		}
+	}
+	else {
+		cout << "entred the body cases\n" << endl;
+		if (requestObj.headersDone == headersDoneState || requestObj.headersDone == bodyState) {
+			requestObj.setContentLength();
+			requestObj.setContentType();
+			requestObj.setConnection();
+			keepAlive = requestObj.getConnection();
+			if (requestObj.getMethod() == "POST"){
+				tookrequest = requestObj.getBodyRequest(r);
+			}
+			if (requestObj.getMethod() == "GET" || requestObj.getMethod() == "DELETE")
+				tookrequest = 1;
+				
+		}
+		if (tookrequest == 1) {
+			requestObj.matchLocation(_server);
+			requestCases(requestObj, _server);
+			responseObj.totalSent = 0;
+		}
 	}
 }
 
-void	client::set_response(int connection_socket){
-	if (!responseObj.totalSent)
-		responseObj.sendHeader(connection_socket, requestObj);
-	filesent = responseObj.sendBody(connection_socket, requestObj);
-	// cout << RED <<"filesent: " << filesent << RESET_TEXT << endl;
-	if (filesent == 1){
-	    tookrequest = 0;
-	    // cout << BLUE<< "tookrequest is set to 0 again" << RESET_TEXT << endl;
+int		client::set_response(int connection_socket){
+	if (requestObj.Cgisdone)
+	{
+		int status = requestObj.CgiObj->waitcheck();
+		if (status == 502){
+			codeNpath(requestObj,"502 Bad Gateway", errorPageTamplate("502, Bad Gateway").c_str(), errorpages);
+			requestObj.Cgisdone = 0;
+		}
+		else if (status == 504){
+			codeNpath(requestObj,"504 Gateway Timeout", errorPageTamplate("504, Gateway Timeout").c_str(), errorpages);
+			requestObj.Cgisdone = 0;
+		}
+		else if (status == 500){
+			codeNpath(requestObj,"500 Internal Server Error", errorPageTamplate("500, Internal Server Error").c_str(), errorpages);
+			requestObj.Cgisdone = 0;
+		}
+		else if (status == 1){
+			int status2 = requestObj.CgiObj->ParseAll();
+			if (status2 == 502){
+				codeNpath(requestObj,"502 Bad Gateway", errorPageTamplate("502, Bad Gateway").c_str(), errorpages);
+			}
+			else{
+				requestObj.setCgiBody(requestObj.CgiObj->body);
+				requestObj.setCgiHeader(requestObj.CgiObj->header);
+			}
+			requestObj.Cgisdone = 0;
+		}
+		if (requestObj.Cgisdone == 0)
+			delete requestObj.CgiObj;
 	}
+	else {
+		if (!responseObj.firstT)
+		{
+			if (requestObj.getMethod() != "DELETE" && requestObj.getredirectURL().empty()){
+				cout << "++++++++++++++ 2" << endl;
+				responseObj.initialize(requestObj);
+			}
+			if (responseObj.sendHeader(connection_socket, requestObj) == 0)
+				return 0;
+			resTime = responseObj.resTime;
+		}
+		if (!requestObj.getredirectURL().empty() || requestObj.getMethod() == "DELETE")
+			filesent = 1;
+		else{
+			filesent = responseObj.sendBody(connection_socket);
+			if (filesent == -1)
+				return 0;
+			resTime = responseObj.resTime;
+		}
+		if (filesent == 1){
+			tookrequest = 0;
+			if (requestObj.getFilePath() == "autoindex.html"
+				|| requestObj.getFilePath() == "errorpage.html") {
+				unlink(requestObj.getFilePath().c_str());
+			}
+		}
+	}
+	return 1;
 }
 
 string client::getresponse(){
@@ -199,4 +152,12 @@ bool	client::getfilesent(){
 
 bool	client::getTookrequest(){
     return tookrequest;
+}
+
+void client::reset(){
+	responseObj.reset();
+	requestObj.reset();
+	keepAlive = 0;
+	filesent = 0;
+	tookrequest = 0;
 }
